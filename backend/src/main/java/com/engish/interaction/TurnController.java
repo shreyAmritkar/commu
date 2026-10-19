@@ -1,8 +1,9 @@
 package com.engish.interaction;
 
-import com.engish.common.Guest;
+import com.engish.auth.AuthUser;
 import com.engish.session.SessionDto;
 import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -17,9 +18,8 @@ public class TurnController {
     }
 
     @PostMapping
-    public SessionDto submit(@PathVariable UUID id,
-                             @RequestHeader(value = Guest.HEADER, required = false) String guestId,
+    public SessionDto submit(@PathVariable UUID id, @AuthenticationPrincipal AuthUser user,
                              @Valid @RequestBody TurnRequest request) {
-        return conversation.takeTurn(id, Guest.require(guestId), request.message());
+        return conversation.takeTurn(id, user.id(), request.message());
     }
 }

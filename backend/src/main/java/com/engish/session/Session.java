@@ -19,7 +19,7 @@ import java.util.UUID;
 public class Session {
     @Id @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-    private String guestId;
+    private UUID userId;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false) @JoinColumn(name = "scenario_id")
     private Scenario scenario;

@@ -1,7 +1,8 @@
 package com.engish.feedback;
 
-import com.engish.common.Guest;
+import com.engish.auth.AuthUser;
 import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -16,9 +17,8 @@ public class AlternativeReplyController {
     }
 
     @PostMapping
-    public AlternativeReplyDto create(@PathVariable UUID id,
-                                      @RequestHeader(value = Guest.HEADER, required = false) String guestId,
+    public AlternativeReplyDto create(@PathVariable UUID id, @AuthenticationPrincipal AuthUser user,
                                       @Valid @RequestBody AlternativeReplyRequest request) {
-        return service.generate(id, Guest.require(guestId), request);
+        return service.generate(id, user.id(), request);
     }
 }

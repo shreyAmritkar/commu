@@ -41,8 +41,8 @@ public class ConversationService {
         this.tx = tx;
     }
 
-    public SessionDto takeTurn(UUID id, String guestId, String rawMessage) {
-        Session s = sessions.getOwned(id, guestId);
+    public SessionDto takeTurn(UUID id, UUID userId, String rawMessage) {
+        Session s = sessions.getOwned(id, userId);
         if (s.getStatus() != SessionStatus.ACTIVE) {
             throw new ApiException(HttpStatus.CONFLICT, "SESSION_NOT_ACTIVE", "This conversation has already ended.");
         }
@@ -77,6 +77,6 @@ public class ConversationService {
             fresh.setUpdatedAt(Instant.now());
             sessionRepo.save(fresh);
         });
-        return sessions.get(id, guestId);
+        return sessions.get(id, userId);
     }
 }

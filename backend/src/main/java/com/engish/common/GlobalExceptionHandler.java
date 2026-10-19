@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -21,6 +22,11 @@ import java.util.Map;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ErrorResponse> handleDenied(AccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("FORBIDDEN", "You do not have permission to do that."));
+    }
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ErrorResponse> handleApi(ApiException e) {
         return ResponseEntity.status(e.getStatus()).body(ErrorResponse.of(e.getCode(), e.getMessage()));
@@ -31,19 +37,22 @@ public class GlobalExceptionHandler {
         Map<String, String> fields = new LinkedHashMap<>();
         e.getBindingResult().getFieldErrors().forEach(f -> fields.put(f.getField(), f.getDefaultMessage()));
         return ResponseEntity.badRequest()
-                .body(new ErrorResponse("VALIDATION_ERROR", "Please check your input: " + String.join("; ", fields.values()), Instant.now(), fields));
+                .body(new ErrorResponse("VALIDATION_ERROR",
+                        "Please check your input: " + String.join("; ", fields.values()), Instant.now(), fields));
     }
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    @ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class })
     ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
-        return ResponseEntity.badRequest().body(ErrorResponse.of("BAD_REQUEST", "The request could not be understood."));
+        return ResponseEntity.badRequest()
+                .body(ErrorResponse.of("BAD_REQUEST", "The request could not be understood."));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ErrorResponse> handleConflict(DataIntegrityViolationException e) {
         log.warn("Data integrity violation: {}", e.getMostSpecificCause().getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("CONFLICT", "That action conflicted with another request. Refresh and try again."));
+                .body(ErrorResponse.of("CONFLICT",
+                        "That action conflicted with another request. Refresh and try again."));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -53,7 +62,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException e) {
-        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(ErrorResponse.of("METHOD_NOT_ALLOWED", e.getMessage()));
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ErrorResponse.of("METHOD_NOT_ALLOWED", e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

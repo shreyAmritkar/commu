@@ -1,8 +1,9 @@
 package com.engish.session;
 
-import com.engish.common.Guest;
+import com.engish.auth.AuthUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,19 +20,17 @@ public class SessionController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public SessionDto create(@RequestHeader(value = Guest.HEADER, required = false) String guestId,
-                             @Valid @RequestBody CreateSessionRequest request) {
-        return service.create(request, Guest.require(guestId));
+    public SessionDto create(@AuthenticationPrincipal AuthUser user, @Valid @RequestBody CreateSessionRequest request) {
+        return service.create(request, user.id());
     }
 
     @GetMapping("/history")
-    public List<SessionSummaryDto> history(@RequestHeader(value = Guest.HEADER, required = false) String guestId) {
-        return service.history(Guest.require(guestId));
+    public List<SessionSummaryDto> history(@AuthenticationPrincipal AuthUser user) {
+        return service.history(user.id());
     }
 
     @GetMapping("/{id}")
-    public SessionDto get(@PathVariable UUID id,
-                          @RequestHeader(value = Guest.HEADER, required = false) String guestId) {
-        return service.get(id, Guest.require(guestId));
+    public SessionDto get(@PathVariable UUID id, @AuthenticationPrincipal AuthUser user) {
+        return service.get(id, user.id());
     }
 }

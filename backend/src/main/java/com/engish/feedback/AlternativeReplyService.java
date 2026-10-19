@@ -41,8 +41,8 @@ public class AlternativeReplyService {
     }
 
     /** Generates (or returns the saved) alternative for one user turn in the given style, plus a comparison. */
-    public AlternativeReplyDto generate(UUID sessionId, String guestId, AlternativeReplyRequest req) {
-        Session s = sessions.getOwned(sessionId, guestId);
+    public AlternativeReplyDto generate(UUID sessionId,UUID userId, AlternativeReplyRequest req) {
+        Session s = sessions.getOwned(sessionId, userId);
         if (s.getStatus() != SessionStatus.COMPLETED) {
             throw new ApiException(HttpStatus.CONFLICT, "SESSION_NOT_COMPLETED", "Finish the conversation and view your feedback first.");
         }

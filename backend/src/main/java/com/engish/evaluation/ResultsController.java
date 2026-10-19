@@ -1,6 +1,7 @@
 package com.engish.evaluation;
 
-import com.engish.common.Guest;
+import com.engish.auth.AuthUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -15,12 +16,12 @@ public class ResultsController {
     }
 
     @PostMapping("/complete")
-    public ResultsDto complete(@PathVariable UUID id, @RequestHeader(value = Guest.HEADER, required = false) String guestId) {
-        return service.complete(id, Guest.require(guestId));
+    public ResultsDto complete(@PathVariable UUID id, @AuthenticationPrincipal AuthUser user) {
+        return service.complete(id, user.id());
     }
 
     @GetMapping("/results")
-    public ResultsDto results(@PathVariable UUID id, @RequestHeader(value = Guest.HEADER, required = false) String guestId) {
-        return service.results(id, Guest.require(guestId));
+    public ResultsDto results(@PathVariable UUID id, @AuthenticationPrincipal AuthUser user) {
+        return service.results(id, user.id());
     }
 }

@@ -321,15 +321,73 @@ async function renderHistory() {
       h('a', { class: 'btn', href: s.status === 'ACTIVE' ? `#/chat/${s.id}` : `#/results/${s.id}` }, s.status === 'ACTIVE' ? 'Continue' : s.status === 'FINISHED' ? 'Get feedback' : 'View results')))), t);
 }
 
+// ---------------------------------------------------------------- login / register
+function renderAuth(mode) {
+  const t = navId;
+  const isLogin = mode === 'login';
+  const err = h('div');
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, isLogin ? 'Sign in' : 'Create account');
+  const name = h('input', { id: 'name', type: 'text', required: true, maxlength: '80', autocomplete: 'name' });
+  const email = h('input', { id: 'email', type: 'email', required: true, maxlength: '254', autocomplete: 'email' });
+  const pw = h('input', { id: 'pw', type: 'password', required: true, minlength: isLogin ? null : '8', maxlength: '72', autocomplete: isLogin ? 'current-password' : 'new-password' });
+
+  const form = h('form', { class: 'card auth-card', novalidate: false, onsubmit: async (e) => {
+    e.preventDefault();
+    err.replaceChildren();
+    btn.disabled = true;
+    try {
+      if (isLogin) await Api.login(email.value, pw.value);
+      else await Api.register(name.value, email.value, pw.value);
+      let back = null;
+      try { back = sessionStorage.getItem('engish.returnTo'); sessionStorage.removeItem('engish.returnTo'); } catch (x) { /* ignore */ }
+      location.hash = back && !back.startsWith('#/login') && !back.startsWith('#/register') ? back : '#/';
+    } catch (ex) {
+      err.replaceChildren(errorBox(ex));
+      btn.disabled = false;
+    }
+  } },
+    h('h1', null, isLogin ? 'Welcome back' : 'Create your account'),
+    h('p', { class: 'muted' }, isLogin ? 'Sign in to continue practising.' : 'Your sessions and feedback are saved to your account.'),
+    isLogin ? null : [h('label', { for: 'name' }, 'Name'), name],
+    h('label', { for: 'email' }, 'Email'), email,
+    h('label', { for: 'pw' }, 'Password' + (isLogin ? '' : ' (at least 8 characters)')), pw,
+    err, h('div', { style: 'margin-top:1rem' }, btn),
+    h('p', { class: 'small muted', style: 'margin-top:1rem' }, isLogin ? 'New here? ' : 'Already have an account? ',
+      h('a', { href: isLogin ? '#/register' : '#/login' }, isLogin ? 'Create an account' : 'Sign in')));
+  mount(form, t);
+}
+
+function renderNav() {
+  const u = Api.user();
+  const nav = document.querySelector('nav');
+  nav.hidden = !Api.isLoggedIn();
+  document.getElementById('userbox').replaceChildren(...(u ? [
+    h('span', { class: 'muted small' }, u.displayName),
+    h('button', { class: 'linklike', onclick: () => { Api.logout(); location.hash = '#/login'; } }, 'Log out'),
+  ] : []));
+}
+
 // ---------------------------------------------------------------- router
 const routes = [
   [/^#\/?$/, renderLibrary], [/^#\/setup\/(\d+)$/, renderSetup], [/^#\/chat\/([\w-]+)$/, renderChat],
   [/^#\/results\/([\w-]+)$/, renderResults], [/^#\/compare\/([\w-]+)\/(\d+)$/, renderCompare], [/^#\/history$/, renderHistory],
+  [/^#\/login$/, () => renderAuth('login')], [/^#\/register$/, () => renderAuth('register')],
 ];
+const PUBLIC_ROUTES = ['#/login', '#/register'];
+
 async function route() {
   const hash = location.hash || '#/';
+  const isPublic = PUBLIC_ROUTES.includes(hash);
+  if (!Api.isLoggedIn() && !isPublic) {            // route guard
+    try { sessionStorage.setItem('engish.returnTo', hash); } catch (e) { /* ignore */ }
+    location.hash = '#/login';
+    return;
+  }
+  if (Api.isLoggedIn() && isPublic) { location.hash = '#/'; return; }
+
   navId += 1;
   const t = navId;
+  renderNav();
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active',
     (a.dataset.nav === 'history' && hash.startsWith('#/history')) || (a.dataset.nav === 'library' && !hash.startsWith('#/history'))));
   window.scrollTo(0, 0);
@@ -342,4 +400,5 @@ async function route() {
   mount(h('div', { class: 'empty' }, h('h2', null, 'Page not found'), h('a', { class: 'btn primary', href: '#/' }, 'Back to scenarios')));
 }
 window.addEventListener('hashchange', route);
+window.addEventListener('engish:logout', () => { if (location.hash === '#/login') route(); else location.hash = '#/login'; });
 route();

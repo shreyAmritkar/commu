@@ -44,8 +44,8 @@ public class EvaluationService {
     }
 
     /** Idempotent: the evaluation is generated once, saved, and reused afterwards. */
-    public ResultsDto complete(UUID id, String guestId) {
-        Session s = sessions.getOwned(id, guestId);
+    public ResultsDto complete(UUID id, UUID userId) {
+        Session s = sessions.getOwned(id, userId);
         if (evaluations.findBySessionId(id).isEmpty()) {
             if (s.getUserTurnCount() < 1) {
                 throw new ApiException(HttpStatus.CONFLICT, "NOT_ENOUGH_TURNS", "Send at least one message before getting feedback.");
@@ -68,11 +68,11 @@ public class EvaluationService {
                 sessionRepo.save(fresh);
             });
         }
-        return results(id, guestId);
+        return results(id, userId);
     }
 
-    public ResultsDto results(UUID id, String guestId) {
-        Session s = sessions.getOwned(id, guestId);
+    public ResultsDto results(UUID id, UUID userId) {
+        Session s = sessions.getOwned(id, userId);
         Evaluation e = evaluations.findBySessionId(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "RESULTS_NOT_READY", "Results have not been generated for this session yet."));
         EvaluationDto dto = new EvaluationDto(e.getId(), e.getOverallScore(), e.getOutcome(), e.getSummary(), fromJson(e.getResultJson()), e.getCreatedAt());

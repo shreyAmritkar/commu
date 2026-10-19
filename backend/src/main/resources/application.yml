@@ -18,7 +18,9 @@ server:
   port: ${PORT:8080}
 
 engish:
-  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  security:
+    jwt-secret: ${JWT_SECRET:}
+    jwt-expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
   ollama:
     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
     model: ${OLLAMA_MODEL:llama3.1:8b}

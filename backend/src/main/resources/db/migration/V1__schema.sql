@@ -47,7 +47,6 @@ CREATE TABLE style_profiles (
 
 CREATE TABLE sessions (
     id               UUID PRIMARY KEY,
-    guest_id         VARCHAR(64) NOT NULL,
     scenario_id      BIGINT      NOT NULL REFERENCES scenarios (id),
     character_id     BIGINT      NOT NULL REFERENCES characters (id),
     style_id         BIGINT      NOT NULL REFERENCES style_profiles (id),
@@ -60,7 +59,7 @@ CREATE TABLE sessions (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at     TIMESTAMPTZ
 );
-CREATE INDEX idx_sessions_guest_created ON sessions (guest_id, created_at DESC);
+
 
 CREATE TABLE session_turns (
     id            BIGSERIAL PRIMARY KEY,
