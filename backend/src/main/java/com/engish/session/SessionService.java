@@ -6,6 +6,7 @@ import com.engish.character.AiCharacter;
 import com.engish.character.CharacterDto;
 import com.engish.character.CharacterRepository;
 import com.engish.common.ApiException;
+import com.engish.common.QuotaService;
 import com.engish.evaluation.Evaluation;
 import com.engish.evaluation.EvaluationRepository;
 import com.engish.interaction.GoalProgress;
@@ -37,10 +38,11 @@ public class SessionService {
         private final EvaluationRepository evaluations;
         private final AiService ai;
         private final TransactionTemplate tx;
+        private final QuotaService quota;
 
         public SessionService(SessionRepository sessions, ScenarioRepository scenarios, StyleRepository styles,
                         CharacterRepository characters, TurnRepository turns, EvaluationRepository evaluations,
-                        AiService ai, TransactionTemplate tx) {
+                        AiService ai, TransactionTemplate tx, QuotaService quota) {
                 this.sessions = sessions;
                 this.scenarios = scenarios;
                 this.styles = styles;
@@ -49,6 +51,7 @@ public class SessionService {
                 this.evaluations = evaluations;
                 this.ai = ai;
                 this.tx = tx;
+                this.quota = quota;
         }
 
         /**
@@ -56,6 +59,7 @@ public class SessionService {
          * succeeds.
          */
         public SessionDto create(CreateSessionRequest req, UUID userId) {
+                quota.checkSession(userId);
                 Scenario scenario = scenarios.findById(req.scenarioId())
                                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SCENARIO_NOT_FOUND",
                                                 "Scenario not found."));

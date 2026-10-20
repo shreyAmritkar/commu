@@ -2,6 +2,7 @@ package com.engish.interaction;
 
 import com.engish.ai.AiService;
 import com.engish.common.ApiException;
+import com.engish.common.QuotaService;
 import com.engish.session.Session;
 import com.engish.session.SessionDto;
 import com.engish.session.SessionRepository;
@@ -31,17 +32,19 @@ public class ConversationService {
     private final TurnRepository turns;
     private final AiService ai;
     private final TransactionTemplate tx;
-
+    private final QuotaService quota;
     public ConversationService(SessionService sessions, SessionRepository sessionRepo, TurnRepository turns,
-                               AiService ai, TransactionTemplate tx) {
+                               AiService ai, TransactionTemplate tx, QuotaService quota) {
         this.sessions = sessions;
         this.sessionRepo = sessionRepo;
         this.turns = turns;
         this.ai = ai;
         this.tx = tx;
+        this.quota = quota;
     }
 
     public SessionDto takeTurn(UUID id, UUID userId, String rawMessage) {
+        quota.checkTurn(userId);
         Session s = sessions.getOwned(id, userId);
         if (s.getStatus() != SessionStatus.ACTIVE) {
             throw new ApiException(HttpStatus.CONFLICT, "SESSION_NOT_ACTIVE", "This conversation has already ended.");

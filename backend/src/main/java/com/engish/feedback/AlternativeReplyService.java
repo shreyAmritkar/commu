@@ -2,6 +2,7 @@ package com.engish.feedback;
 
 import com.engish.ai.AiService;
 import com.engish.common.ApiException;
+import com.engish.common.QuotaService;
 import com.engish.interaction.SessionTurn;
 import com.engish.interaction.Speaker;
 import com.engish.interaction.TurnRepository;
@@ -29,15 +30,17 @@ public class AlternativeReplyService {
     private final AlternativeReplyRepository repo;
     private final AiService ai;
     private final ObjectMapper mapper;
+    private final QuotaService quota;
 
     public AlternativeReplyService(SessionService sessions, TurnRepository turns, StyleRepository styles,
-                                   AlternativeReplyRepository repo, AiService ai, ObjectMapper mapper) {
+                                   AlternativeReplyRepository repo, AiService ai, ObjectMapper mapper, QuotaService quota) {
         this.sessions = sessions;
         this.turns = turns;
         this.styles = styles;
         this.repo = repo;
         this.ai = ai;
         this.mapper = mapper;
+        this.quota = quota;
     }
 
     /** Generates (or returns the saved) alternative for one user turn in the given style, plus a comparison. */
@@ -56,6 +59,7 @@ public class AlternativeReplyService {
 
         var existing = repo.findBySessionIdAndTurnIdAndStyleId(sessionId, turn.getId(), style.getId());
         if (existing.isPresent()) return toDto(existing.get(), style);
+        quota.checkAlternative(userId);
 
         List<SessionTurn> all = turns.findBySessionIdOrderBySeqAsc(sessionId);
         List<SessionTurn> before = all.stream().filter(t -> t.getSeq() < turn.getSeq()).toList();

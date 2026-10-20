@@ -14,7 +14,7 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final String dummyHash;   // compared against when the email is unknown, so timing does not reveal it
-
+    
     public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt) {
         this.users = users;
         this.encoder = encoder;

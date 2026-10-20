@@ -7,12 +7,17 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/engish}
     username: ${DB_USER:engish}
     password: ${DB_PASSWORD:engish}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: none
   flyway:
     enabled: true
+    user: ${FLYWAY_USER:${DB_USER:engish}}
+    password: ${FLYWAY_PASSWORD:${DB_PASSWORD:engish}}
 
 server:
   port: ${PORT:8080}
@@ -26,3 +31,10 @@ engish:
     model: ${OLLAMA_MODEL:llama3.1:8b}
     timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:180}
     temperature: ${OLLAMA_TEMPERATURE:0.7}
+    max-output-tokens: ${OLLAMA_MAX_OUTPUT_TOKENS:1600}
+    max-concurrent: ${OLLAMA_MAX_CONCURRENT:2}
+
+logging:
+  level:
+    root: INFO
+    
