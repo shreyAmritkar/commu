@@ -10,29 +10,30 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Fixed one-minute windows. Login/register are limited per IP; the LLM-backed POSTs are limited per user, per endpoint. */
+/**
+ * Applies the Redis-backed limits. Not a @Component: SecurityConfig creates it so it is registered once, inside the security chain,
+ * after JwtAuthenticationFilter so the authenticated user is known. Unauthenticated calls to non-auth endpoints are skipped here
+ * because they are rejected with 401 before any expensive work happens.
+ */
 public class RateLimitFilter extends OncePerRequestFilter {
-    private record Bucket(String name, int limit) {}
-
-    private static final long WINDOW_MS = 60_000;
-
-    private final Map<String, long[]> windows = new ConcurrentHashMap<>();   // key -> {windowStart, count}
     private final ObjectMapper mapper;
+    private final RateLimitService limits;
+    private final ClientIpResolver ips;
 
-    public RateLimitFilter(ObjectMapper mapper) {
+    public RateLimitFilter(ObjectMapper mapper, RateLimitService limits, ClientIpResolver ips) {
         this.mapper = mapper;
+        this.limits = limits;
+        this.ips = ips;
     }
 
-    private static Bucket bucketFor(String path) {
-        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")) return new Bucket("auth", 10);
-        if (path.equals("/api/sessions")) return new Bucket("create", 6);
+    private static RateLimitService.Kind kindFor(String path) {
+        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")) return RateLimitService.Kind.AUTH;
+        if (path.equals("/api/sessions")) return RateLimitService.Kind.CREATE;
         if (path.startsWith("/api/sessions/")) {
-            if (path.endsWith("/turns")) return new Bucket("turn", 20);
-            if (path.endsWith("/complete")) return new Bucket("complete", 6);
-            if (path.endsWith("/alternative-replies")) return new Bucket("alt", 10);
+            if (path.endsWith("/turns")) return RateLimitService.Kind.TURN;
+            if (path.endsWith("/complete")) return RateLimitService.Kind.COMPLETE;
+            if (path.endsWith("/alternative-replies")) return RateLimitService.Kind.ALTERNATIVE;
         }
         return null;
     }
@@ -40,36 +41,29 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        Bucket bucket = "POST".equals(req.getMethod()) ? bucketFor(req.getRequestURI()) : null;
-        if (bucket != null) {
-            Authentication a = SecurityContextHolder.getContext().getAuthentication();
-            String who = !bucket.name().equals("auth") && a != null && a.getPrincipal() instanceof AuthUser u
-                    ? u.id().toString()
-                    : req.getRemoteAddr();   // behind a proxy, enable server.forward-headers-strategy so this is the client IP
-            long retryAfter = retryAfterSeconds(bucket.name() + ":" + who, bucket.limit());
-            if (retryAfter > 0) {
-                res.setHeader("Retry-After", String.valueOf(retryAfter));
-                ErrorWriter.write(mapper, res, 429, "RATE_LIMITED", "Too many requests. Please wait a moment and try again.");
-                return;
+        RateLimitService.Kind kind = "POST".equals(req.getMethod()) ? kindFor(req.getRequestURI()) : null;
+        if (kind != null) {
+            String subject = null;
+            if (kind == RateLimitService.Kind.AUTH) {
+                subject = ips.resolve(req);
+            } else {
+                Authentication a = SecurityContextHolder.getContext().getAuthentication();
+                if (a != null && a.getPrincipal() instanceof AuthUser u) subject = u.id().toString();
+            }
+            if (subject != null) {
+                RateLimitService.Decision d = limits.check(kind, subject);
+                if (d.unavailable()) {
+                    res.setHeader("Retry-After", String.valueOf(d.retryAfterSeconds()));
+                    ErrorWriter.write(mapper, res, 503, "RATE_LIMIT_UNAVAILABLE", "The service is temporarily unavailable. Please try again shortly.");
+                    return;
+                }
+                if (!d.allowed()) {
+                    res.setHeader("Retry-After", String.valueOf(d.retryAfterSeconds()));
+                    ErrorWriter.write(mapper, res, 429, "RATE_LIMITED", "Too many requests. Please wait a moment and try again.");
+                    return;
+                }
             }
         }
         chain.doFilter(req, res);
-    }
-
-    /** Returns 0 when allowed, otherwise the number of seconds until the window resets. */
-    private long retryAfterSeconds(String key, int limit) {
-        long now = System.currentTimeMillis();
-        if (windows.size() > 10_000) windows.values().removeIf(w -> now - w[0] >= WINDOW_MS);   // keep memory bounded
-        long[] result = {0};
-        windows.compute(key, (k, w) -> {
-            if (w == null || now - w[0] >= WINDOW_MS) return new long[]{now, 1};
-            if (w[1] >= limit) {
-                result[0] = Math.max(1, (WINDOW_MS - (now - w[0]) + 999) / 1000);
-                return w;
-            }
-            w[1]++;
-            return w;
-        });
-        return result[0];
     }
 }

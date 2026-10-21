@@ -29,14 +29,14 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, JwtService jwt, UserRepository users,
-                                    SecurityErrorHandlers errors, ObjectMapper mapper) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, JwtService jwt, UserRepository users, SecurityErrorHandlers errors,
+                                    ObjectMapper mapper, RateLimitService rateLimits, ClientIpResolver clientIps) throws Exception {
         JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwt, users);
         RequestSizeFilter sizeFilter = new RequestSizeFilter(mapper);
-        RateLimitFilter rateLimitFilter = new RateLimitFilter(mapper);
+        RateLimitFilter rateLimitFilter = new RateLimitFilter(mapper, rateLimits, clientIps);
 
         http
-                .csrf(AbstractHttpConfigurer::disable)            // safe: bearer header, no cookies
+                .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -48,7 +48,7 @@ public class SecurityConfig {
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.ico", "/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/**").authenticated()
-                        .anyRequest().denyAll())                   // anything not listed above is blocked
+                        .anyRequest().denyAll())
                 .exceptionHandling(e -> e.authenticationEntryPoint(errors).accessDeniedHandler(errors))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(sizeFilter, JwtAuthenticationFilter.class)

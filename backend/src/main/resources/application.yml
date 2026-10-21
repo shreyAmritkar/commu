@@ -26,15 +26,38 @@ engish:
   security:
     jwt-secret: ${JWT_SECRET:}
     jwt-expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
+  http:
+    trusted-proxies: ${TRUSTED_PROXIES:}          # comma-separated IPs or CIDRs, empty = trust nobody
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    ssl: ${REDIS_SSL:false}
+    database: ${REDIS_DATABASE:0}
+    connect-timeout-ms: ${REDIS_CONNECT_TIMEOUT_MS:1000}
+    command-timeout-ms: ${REDIS_COMMAND_TIMEOUT_MS:500}
+    key-prefix: ${REDIS_KEY_PREFIX:engish}
+  rate-limit:
+    fail-open: ${RATE_LIMIT_FAIL_OPEN:false}
+    window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+    auth-per-ip: ${RATE_LIMIT_AUTH_PER_IP:10}
+    create-per-user: ${RATE_LIMIT_CREATE_PER_USER:6}
+    turn-per-user: ${RATE_LIMIT_TURN_PER_USER:20}
+    complete-per-user: ${RATE_LIMIT_COMPLETE_PER_USER:6}
+    alternative-per-user: ${RATE_LIMIT_ALTERNATIVE_PER_USER:10}
+  llm:
+    global-max-concurrent: ${LLM_GLOBAL_MAX_CONCURRENT:2}   # 0 disables global control
+    lease-seconds: ${LLM_LEASE_SECONDS:30}
+    fail-open: ${LLM_GLOBAL_FAIL_OPEN:false}
   ollama:
     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
     model: ${OLLAMA_MODEL:llama3.1:8b}
     timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:180}
     temperature: ${OLLAMA_TEMPERATURE:0.7}
     max-output-tokens: ${OLLAMA_MAX_OUTPUT_TOKENS:1600}
-    max-concurrent: ${OLLAMA_MAX_CONCURRENT:2}
+    max-concurrent: ${OLLAMA_MAX_CONCURRENT:2}              # per instance
+    queue-wait-seconds: ${OLLAMA_QUEUE_WAIT_SECONDS:20}
 
 logging:
   level:
     root: INFO
-    

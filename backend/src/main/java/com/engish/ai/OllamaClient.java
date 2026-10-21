@@ -22,20 +22,27 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class OllamaClient implements LlmClient {
     private static final Logger log = LoggerFactory.getLogger(OllamaClient.class);
-    private static final long QUEUE_WAIT_SECONDS = 20;
 
     private final OllamaProperties props;
     private final RestClient rest;
-    private final Semaphore slots;          // limits how many generations run at once
-    private final int maxOutputTokens;      // stops a runaway generation from hogging the model
+    private final Semaphore slots;                       // per-instance cap
+    private final GlobalConcurrencyLimiter globalLimiter; // cluster-wide cap (Redis)
+    private final Duration queueWait;                    // one budget shared by both waits
+    private final int maxOutputTokens;
 
-    public OllamaClient(OllamaProperties props, RestClient.Builder builder) {
+    public OllamaClient(OllamaProperties props, RestClient.Builder builder, GlobalConcurrencyLimiter globalLimiter) {
+        if (props.maxConcurrent() < 1) throw new IllegalStateException("OLLAMA_MAX_CONCURRENT must be at least 1");
+        if (props.queueWaitSeconds() < 1) throw new IllegalStateException("OLLAMA_QUEUE_WAIT_SECONDS must be at least 1");
+        if (props.timeoutSeconds() < 5) throw new IllegalStateException("OLLAMA_TIMEOUT_SECONDS must be at least 5");
+        if (props.maxOutputTokens() < 1) throw new IllegalStateException("OLLAMA_MAX_OUTPUT_TOKENS must be at least 1");
         this.props = props;
-        this.slots = new Semaphore(props.maxConcurrent() > 0 ? props.maxConcurrent() : 2, true);
-        this.maxOutputTokens = props.maxOutputTokens() > 0 ? props.maxOutputTokens() : 1600;
+        this.globalLimiter = globalLimiter;
+        this.slots = new Semaphore(props.maxConcurrent(), true);
+        this.queueWait = Duration.ofSeconds(props.queueWaitSeconds());
+        this.maxOutputTokens = props.maxOutputTokens();
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(Duration.ofSeconds(Math.max(5, props.timeoutSeconds())));
+        factory.setReadTimeout(Duration.ofSeconds(props.timeoutSeconds()));
         this.rest = builder.baseUrl(props.baseUrl()).requestFactory(factory).build();
     }
 
@@ -43,16 +50,23 @@ public class OllamaClient implements LlmClient {
     public String complete(String systemPrompt, String userPrompt, boolean jsonMode) {
         if (props.model() == null || props.model().isBlank()) throw AiException.notConfigured();
 
-        boolean acquired;
+        long deadline = System.nanoTime() + queueWait.toNanos();
+
+        // 1) per-instance permit first, so a request never holds a global permit while queueing locally
+        boolean local;
         try {
-            acquired = slots.tryAcquire(QUEUE_WAIT_SECONDS, TimeUnit.SECONDS);
+            local = slots.tryAcquire(queueWait.toNanos(), TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw AiException.busy();
         }
-        if (!acquired) throw AiException.busy();
+        if (!local) throw AiException.busy();
         try {
-            return call(systemPrompt, userPrompt, jsonMode);
+            // 2) cluster-wide permit, using whatever is left of the same wait budget
+            Duration remaining = Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
+            try (GlobalConcurrencyLimiter.Permit ignored = globalLimiter.acquire(remaining)) {
+                return call(systemPrompt, userPrompt, jsonMode);
+            }
         } finally {
             slots.release();
         }
