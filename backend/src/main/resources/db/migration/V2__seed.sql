@@ -63,3 +63,4 @@ INSERT INTO style_profiles (style_key, name, description, inspired_by, warmth, c
 ('diplomatic-leader', 'Diplomatic leader', 'Composed and measured. Seeks common ground while holding a firm line.', 'Jean-Luc Picard (fictional character)', 6, 9, 7, 2, 7, 8),
 ('enthusiastic-organizer', 'Enthusiastic organiser', 'High energy and optimistic. Gets to the point and brings people along.', 'Leslie Knope (fictional character)', 9, 9, 8, 7, 7, 5),
 ('sharp-analyst', 'Sharp analyst', 'Precise, logical and blunt. Cuts to the facts, with little cushioning.', 'Sherlock Holmes (fictional character)', 2, 10, 10, 5, 2, 6);
+

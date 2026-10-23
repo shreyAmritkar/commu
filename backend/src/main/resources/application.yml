@@ -1,6 +1,9 @@
 spring:
   application:
     name: engish
+  threads:
+    virtual:
+      enabled: true
   config:
     import: optional:file:.env[.properties]
   datasource:
@@ -57,7 +60,26 @@ engish:
     max-output-tokens: ${OLLAMA_MAX_OUTPUT_TOKENS:1600}
     max-concurrent: ${OLLAMA_MAX_CONCURRENT:2}              # per instance
     queue-wait-seconds: ${OLLAMA_QUEUE_WAIT_SECONDS:20}
+  notifications:
+    max-streams-per-user: ${NOTIFY_MAX_STREAMS_PER_USER:5}
+    stream-timeout-minutes: ${NOTIFY_STREAM_TIMEOUT_MINUTES:10}
+    heartbeat-seconds: ${NOTIFY_HEARTBEAT_SECONDS:25}
+    retention-days: ${NOTIFY_RETENTION_DAYS:30}
 
 logging:
   level:
     root: INFO
+org:
+  jobrunr:
+    database:
+      table-prefix: jobrunr.
+    background-job-server:
+      enabled: ${JOBRUNR_SERVER_ENABLED:true}
+      worker-count: ${JOBRUNR_WORKER_COUNT:2}        # keep <= OLLAMA_MAX_CONCURRENT
+      poll-interval-in-seconds: 5
+      delete-succeeded-jobs-after: 24h
+      permanently-delete-deleted-jobs-after: 72h
+    dashboard:
+      enabled: false
+      
+      

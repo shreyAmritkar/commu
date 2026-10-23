@@ -64,5 +64,12 @@ const Api = (() => {
     results: (id) => request('GET', `/api/sessions/${id}/results`),
     createAlternative: (id, turnId, styleId) => request('POST', `/api/sessions/${id}/alternative-replies`, { turnId, styleId }),
     history: () => request('GET', '/api/sessions/history'),
+    notifications: () => request('GET', '/api/notifications'),
+    markNotificationRead: (id) => request('POST', `/api/notifications/${id}/read`),
+    markAllNotificationsRead: () => request('POST', '/api/notifications/read-all'),
+    // fetch (not EventSource) so the Authorization header can be sent and the token never appears in a URL
+    openStream: (signal) => fetch(BASE + '/api/notifications/stream', {
+      headers: { Authorization: `Bearer ${store.get(TOKEN_KEY)}`, Accept: 'text/event-stream' }, signal,
+    }),
   };
 })();

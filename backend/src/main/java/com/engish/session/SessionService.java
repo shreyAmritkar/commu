@@ -6,6 +6,7 @@ import com.engish.character.AiCharacter;
 import com.engish.character.CharacterDto;
 import com.engish.character.CharacterRepository;
 import com.engish.common.ApiException;
+import com.engish.common.JobStatus;
 import com.engish.common.QuotaService;
 import com.engish.evaluation.Evaluation;
 import com.engish.evaluation.EvaluationRepository;
@@ -109,13 +110,19 @@ public class SessionService {
                 List<Session> list = sessions.findTop50ByUserIdOrderByCreatedAtDesc(userId);
                 if (list.isEmpty())
                         return List.of();
-                Map<UUID, Integer> scores = evaluations.findBySessionIdIn(list.stream().map(Session::getId).toList())
+                Map<UUID, Evaluation> evals = evaluations.findBySessionIdIn(list.stream().map(Session::getId).toList())
                                 .stream()
-                                .collect(Collectors.toMap(Evaluation::getSessionId, Evaluation::getOverallScore));
-                return list.stream().map(s -> new SessionSummaryDto(s.getId(), s.getScenario().getTitle(),
-                                s.getScenario().getCategory(),
-                                s.getCharacter().getName(), s.getStyle().getName(), s.getStatus(), s.getUserTurnCount(),
-                                s.getScenario().getMaxTurns(), scores.get(s.getId()), s.getCreatedAt())).toList();
+                                .collect(Collectors.toMap(Evaluation::getSessionId, e -> e));
+                return list.stream().map(s -> {
+                        Evaluation e = evals.get(s.getId());
+                        boolean done = e != null && e.getStatus() == JobStatus.DONE;
+                        return new SessionSummaryDto(s.getId(), s.getScenario().getTitle(),
+                                        s.getScenario().getCategory(),
+                                        s.getCharacter().getName(), s.getStyle().getName(), s.getStatus(),
+                                        s.getUserTurnCount(),
+                                        s.getScenario().getMaxTurns(), done ? e.getOverallScore() : null,
+                                        e == null ? null : e.getStatus(), s.getCreatedAt());
+                }).toList();
         }
 
         public SessionDto toDto(Session s) {

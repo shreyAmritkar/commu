@@ -1,5 +1,6 @@
 package com.engish.feedback;
 
+import com.engish.common.JobStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,5 +21,10 @@ public class AlternativeReply {
     private String originalMessage;
     private String alternativeMessage;
     private String comparisonJson;
+    @Enumerated(EnumType.STRING)
+    private JobStatus status = JobStatus.PENDING;
+    private int attempts;
+    private String errorMessage;
     private Instant createdAt = Instant.now();
+    private Instant updatedAt = Instant.now();
 }

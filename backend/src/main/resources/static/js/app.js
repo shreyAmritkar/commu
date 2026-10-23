@@ -8,7 +8,28 @@ const DIMS = [['clarity', 'Clarity'], ['tone', 'Tone'], ['empathy', 'Empathy'], 
 const TRAITS = ['warmth', 'confidence', 'directness', 'humor', 'empathy', 'formality'];
 const MOODS = ['HOSTILE', 'DEFENSIVE', 'TENSE', 'NEUTRAL', 'RECEPTIVE', 'WARM'];
 const DISCLAIMER = 'This is a suggestion inspired by a communication style, written by an AI. It is not what the real actor or character would actually say.';
-
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isPending = (s) => s === 'PENDING' || s === 'RUNNING';
+const WAIT_LIMIT_MS = 10 * 60 * 1000;
+// A calm "working on it" screen that can be updated while we poll.
+function progressScreen() {
+  const title = h('h2', null, 'Checking your feedback…');
+  const detail = h('p', { class: 'muted' }, '');
+  const timer = h('div', { class: 'small muted' }, '');
+  const node = h('div', { class: 'card progress-card', role: 'status', 'aria-live': 'polite' },
+    h('div', { class: 'spinner big' }), title, detail, timer,
+    h('div', { style: 'margin-top:1rem;display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap' },
+      h('a', { class: 'btn', href: '#/history' }, 'Go to History'),
+      h('a', { class: 'btn', href: '#/' }, 'Practise another scenario')));
+  return {
+    node,
+    update(t, d, seconds) {
+      title.textContent = t;
+      detail.textContent = d;
+      timer.textContent = seconds > 5 ? `Waiting for ${seconds} seconds so far` : '';
+    },
+  };
+}
 // ---------------------------------------------------------------- helpers
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -32,7 +53,7 @@ function mount(node, token) {
 }
 const spinner = (label) => h('div', { class: 'loading', role: 'status' }, h('div', { class: 'spinner' }), h('span', null, label));
 function errorBox(err, retry) {
-  return h('div', { class: 'error', role: 'alert' }, h('strong', null, err.message || 'Something went wrong.'),
+  return h('div', { class: 'error', role: 'alert' }, h('strong', null, friendlyMessage(err)),
     retry ? h('div', null, h('button', { class: 'btn small', onclick: retry }, 'Try again')) : null);
 }
 const fmtDate = (d) => new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
@@ -49,8 +70,25 @@ function traitBars(traits) {
   return h('div', null, TRAITS.map((t) => h('div', { class: 'trait' }, h('span', null, t === 'humor' ? 'Humour' : t[0].toUpperCase() + t.slice(1)),
     h('div', { class: 'bar' }, h('span', { style: `width:${(traits[t] || 0) * 10}%` })))));
 }
-const pageError = (err, retry) => mount(h('div', null, h('a', { class: 'back', href: '#/' }, '‹ Back to scenarios'), errorBox(err, retry)));
-
+function friendlyMessage(err) {
+  if (err instanceof Error && !(err instanceof ApiError)) {
+    console.error(err);
+    return 'Something went wrong while showing this page. Please try again.';
+  }
+  return (err && err.message) || 'Something went wrong. Please try again.';
+}
+function errorBox(err, retry) {
+  return h('div', { class: 'error', role: 'alert' }, h('strong', null, friendlyMessage(err)),
+    retry ? h('div', null, h('button', { class: 'btn small', onclick: retry }, 'Try again')) : null);
+}
+function pageError(err, retry) {
+  mount(h('div', { class: 'empty' },
+    h('h2', null, 'We couldn’t load this page'),
+    h('p', { style: 'margin:0 auto 1rem' }, friendlyMessage(err)),
+    h('div', { style: 'display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap' },
+      retry ? h('button', { class: 'btn primary', onclick: retry }, 'Try again') : null,
+      h('a', { class: 'btn', href: '#/' }, 'Back to scenarios'))));
+}
 // ---------------------------------------------------------------- 1. scenario library
 async function renderLibrary() {
   const t = navId;
@@ -163,12 +201,29 @@ async function renderChat(id) {
       sendBtn.textContent = sending ? 'Waiting…' : 'Send';
       counter.textContent = `${input.value.length} / 1000`;
       footer.replaceChildren(error ? errorBox(error) : '', h('div', { class: 'composer' }, input, sendBtn), counter);
-    } else {
+        } else {
       const done = session.status === 'COMPLETED';
-      footer.replaceChildren(h('div', { class: 'banner' },
-        h('div', null, h('strong', null, done ? 'This conversation is finished.' : 'The conversation has reached its end.'),
-          h('div', { class: 'small muted' }, done ? 'Your feedback is saved.' : 'Get your evaluation and see alternative replies.')),
-        h('a', { class: 'btn primary', href: `#/results/${session.id}` }, done ? 'View feedback' : 'Get my feedback')));
+      const slot = h('div');
+      const btn = h('button', { class: 'btn primary' }, done ? 'View feedback' : 'Get my feedback');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.replaceChildren(h('span', { class: 'spinner inline' }), ' Processing…');
+        slot.replaceChildren();
+        try {
+          if (!done) await Api.complete(session.id);        // queues the job and returns right away
+          location.hash = `#/results/${session.id}`;
+        } catch (e) {
+          slot.replaceChildren(errorBox(e));
+          btn.disabled = false;
+          btn.textContent = 'Get my feedback';
+        }
+      });
+      footer.replaceChildren(
+        h('div', { class: 'banner' },
+          h('div', null, h('strong', null, done ? 'This conversation is finished.' : 'The conversation has reached its end.'),
+            h('div', { class: 'small muted' }, done ? 'Your feedback is saved.' : 'Get your evaluation and see alternative replies.')),
+          btn),
+        slot);
     }
   }
 
@@ -199,29 +254,60 @@ async function renderChat(id) {
   if (session.status === 'ACTIVE') input.focus();
 }
 
-// ---------------------------------------------------------------- 4. evaluation results
-async function loadResults(id, onStatus) {
-  try {
-    return await Api.results(id);
-  } catch (e) {
-    if (e.code !== 'RESULTS_NOT_READY') throw e;
-    onStatus && onStatus();
-    return Api.complete(id);          // generates the evaluation once, then it is stored
-  }
-}
 
+// ---------------------------------------------------------------- 4. evaluation results (background job, polled)
 async function renderResults(id) {
   const t = navId;
-  mount(spinner('Loading results…'), t);
+  const back = h('a', { class: 'back', href: '#/history' }, '‹ History');
+  const screen = progressScreen();
+  screen.update('Processing your feedback…', '', 0);
+  mount(screen.node, t);
+
   let data;
   try {
-    data = await loadResults(id, () => mount(spinner('Analysing your conversation. This can take a minute with a local model…'), t));
+    try { data = await Api.results(id); }
+    catch (e) { if (e.code !== 'RESULTS_NOT_READY') throw e; data = await Api.complete(id); }
+
+    const started = Date.now();
+    while (isPending(data.evaluation.status) && Date.now() - started < WAIT_LIMIT_MS) {
+      const ev = data.evaluation;
+      const seconds = Math.round((Date.now() - started) / 1000);
+      if (ev.status === 'PENDING' && ev.errorMessage) {
+        screen.update('Taking a little longer than usual',
+          'The first attempt did not finish, so we are trying again automatically. You do not need to do anything.', seconds);
+      } else if (ev.status === 'PENDING') {
+        screen.update('Your feedback is in the queue',
+          'Other conversations are being analysed first. This page updates by itself, and you can leave and come back.', seconds);
+      } else {
+        screen.update('Your feedback is being prepared',
+          'We are analysing your conversation. This usually takes about a minute. You can leave this page and come back; it keeps working.', seconds);
+      }
+      await sleep(3000);
+      if (t !== navId) return;
+      data = await Api.results(id);
+    }
   } catch (e) {
     if (e.code === 'NOT_ENOUGH_TURNS') { location.hash = `#/chat/${id}`; return; }
     return mount(h('div', null, h('a', { class: 'back', href: `#/chat/${id}` }, '‹ Back to the conversation'), errorBox(e, () => route())), t);
   }
+  const ev = data.evaluation;
+  if (isPending(ev.status)) {
+    return mount(h('div', null, back, h('div', { class: 'notice' }, 'Your feedback is still being prepared.'),
+      h('div', { style: 'margin-top:1rem' }, h('button', { class: 'btn primary', onclick: () => route() }, 'Check again'))), t);
+  }
+  if (ev.status === 'FAILED') {
+    const slot = h('div');
+    const retry = h('button', { class: 'btn primary', onclick: async () => {
+      retry.disabled = true;
+      try { await Api.complete(id); route(); } catch (e) { slot.replaceChildren(errorBox(e)); retry.disabled = false; }
+    } }, 'Try again');
+    return mount(h('div', null, back, h('h1', null, 'We could not prepare your feedback'),
+      errorBox({ message: ev.errorMessage || 'The AI could not finish the analysis.' }), slot, retry), t);
+  }
+
   const styles = await Api.styles();
-  const ev = data.evaluation, d = ev.details, sess = data.session;
+  if (t !== navId) return;
+  const d = ev.details, sess = data.session;
   let styleId = sess.style.id;
   const rows = h('div'), errSlot = h('div');
   const select = h('select', { id: 'style-select', 'aria-label': 'Alternative reply style', onchange: (e) => { styleId = Number(e.target.value); drawRows(); } },
@@ -231,16 +317,19 @@ async function renderResults(id) {
   function drawRows() {
     rows.replaceChildren(...userTurns.map((turn) => {
       const existing = data.alternativeReplies.find((a) => a.turnId === turn.id && a.styleId === styleId);
-      const btn = h('button', { class: `btn small${existing ? '' : ' primary'}` }, existing ? 'View comparison' : 'Generate alternative');
+      const label = !existing ? 'Generate alternative'
+        : existing.status === 'DONE' ? 'View comparison'
+        : existing.status === 'FAILED' ? 'Try again' : 'View progress';
+      const btn = h('button', { class: `btn small${existing && existing.status !== 'FAILED' ? '' : ' primary'}` }, label);
       btn.addEventListener('click', async () => {
-        if (existing) { location.hash = `#/compare/${sess.id}/${existing.id}`; return; }
+        if (existing && existing.status !== 'FAILED') { location.hash = `#/compare/${sess.id}/${existing.id}`; return; }
         errSlot.replaceChildren();
         rows.querySelectorAll('button').forEach((b) => (b.disabled = true));
         select.disabled = true;
-        btn.textContent = 'Writing… (can take a minute)';
+        btn.textContent = 'Starting…';
         try {
-          const alt = await Api.createAlternative(sess.id, turn.id, styleId);
-          data.alternativeReplies.push(alt);
+          const alt = await Api.createAlternative(sess.id, turn.id, styleId);   // returns right away; the work runs in the background
+          data.alternativeReplies = data.alternativeReplies.filter((a) => a.id !== alt.id).concat(alt);
           location.hash = `#/compare/${sess.id}/${alt.id}`;
         } catch (e) {
           errSlot.replaceChildren(errorBox(e));
@@ -253,9 +342,7 @@ async function renderResults(id) {
   drawRows();
 
   const list = (title, items) => h('section', { class: 'card' }, h('h3', null, title), h('ul', { class: 'clean' }, items.map((i) => h('li', null, i))));
-  mount(h('div', null,
-    h('a', { class: 'back', href: '#/history' }, '‹ History'),
-    h('h1', null, sess.scenario.title),
+  mount(h('div', null, back, h('h1', null, sess.scenario.title),
     h('section', { class: 'card' }, h('div', { class: 'score-head' },
       h('div', { class: 'score' }, String(ev.overallScore), h('small', null, ' / 10')),
       h('div', null, h('span', { class: 'chip' }, OUTCOME[ev.outcome] || cap(ev.outcome)), h('p', { style: 'margin-top:.6rem' }, ev.summary)))),
@@ -266,7 +353,7 @@ async function renderResults(id) {
           h('div', { class: 'bar' }, h('span', { style: `width:${dim.score * 10}%` })), h('p', null, dim.comment)); })),
       h('div', { class: 'stack' }, list('Strengths', d.strengths), list('Where to improve', d.improvements), list('Try next time', d.suggestions))),
     h('section', { class: 'card', style: 'margin-top:1rem' }, h('h2', null, 'Compare your replies with a different style'),
-      h('p', { class: 'muted' }, 'Pick a style, then choose one of your messages to see an alternative version side by side.'),
+      h('p', { class: 'muted' }, 'Pick a style, then choose one of your messages. The alternative is written in the background, so you can leave the page and come back.'),
       h('div', { class: 'toolbar' }, h('label', { for: 'style-select' }, 'Style:'), select), errSlot, rows,
       h('div', { class: 'notice', style: 'margin-top:1rem' }, DISCLAIMER)),
     h('section', { class: 'card', style: 'margin-top:1rem' }, h('h2', null, 'Full transcript'),
@@ -274,14 +361,42 @@ async function renderResults(id) {
     h('div', { style: 'margin-top:1.2rem' }, h('a', { class: 'btn primary', href: '#/' }, 'Practise another scenario'))), t);
 }
 
-// ---------------------------------------------------------------- 5. original vs alternative
+// ---------------------------------------------------------------- 5. original vs alternative (polled while generating)
 async function renderCompare(sessionId, altId) {
   const t = navId;
-  mount(spinner('Loading comparison…'), t);
-  const data = await Api.results(sessionId);
-  const alt = data.alternativeReplies.find((a) => String(a.id) === String(altId));
+  const statusText = h('span', null, 'Loading comparison…');
+  mount(h('div', { class: 'loading', role: 'status' }, h('div', { class: 'spinner' }), statusText), t);
   const back = h('a', { class: 'back', href: `#/results/${sessionId}` }, '‹ Back to results');
+
+  let data = await Api.results(sessionId);
+  const find = () => data.alternativeReplies.find((a) => String(a.id) === String(altId));
+  let alt = find();
   if (!alt) return mount(h('div', null, back, errorBox({ message: 'That comparison could not be found.' })), t);
+
+  const started = Date.now();
+  while (isPending(alt.status) && Date.now() - started < WAIT_LIMIT_MS) {
+    statusText.textContent = alt.status === 'RUNNING'
+      ? 'Writing the alternative and comparing it. You can leave this page; it keeps working.'
+      : 'Waiting for a free slot…';
+    await sleep(3000);
+    if (t !== navId) return;
+    data = await Api.results(sessionId);
+    alt = find();
+    if (!alt) return mount(h('div', null, back, errorBox({ message: 'That comparison could not be found.' })), t);
+  }
+  if (isPending(alt.status)) {
+    return mount(h('div', null, back, h('div', { class: 'notice' }, 'Still working on this one.'),
+      h('div', { style: 'margin-top:1rem' }, h('button', { class: 'btn primary', onclick: () => route() }, 'Check again'))), t);
+  }
+  if (alt.status === 'FAILED') {
+    const slot = h('div');
+    const retry = h('button', { class: 'btn primary', onclick: async () => {
+      retry.disabled = true;
+      try { await Api.createAlternative(sessionId, alt.turnId, alt.styleId); route(); } catch (e) { slot.replaceChildren(errorBox(e)); retry.disabled = false; }
+    } }, 'Try again');
+    return mount(h('div', null, back, h('h1', null, 'We could not write this alternative'),
+      errorBox({ message: alt.errorMessage || 'The AI could not finish.' }), slot, retry), t);
+  }
 
   const sess = data.session, turn = sess.turns.find((x) => x.id === alt.turnId);
   const before = turn ? sess.turns.filter((x) => x.seq < turn.seq && x.speaker === 'CHARACTER').pop() : null;
@@ -289,8 +404,7 @@ async function renderCompare(sessionId, altId) {
   const style = sess.style.id === alt.styleId ? sess.style : null;
   const c = alt.comparison;
 
-  mount(h('div', null, back,
-    h('h1', null, 'Your reply vs. an alternative'),
+  mount(h('div', null, back, h('h1', null, 'Your reply vs. an alternative'),
     h('p', { class: 'lead' }, `${alt.styleName}, inspired by ${alt.inspiredBy.replace(' (fictional character)', '')}`),
     before ? h('div', { class: `context ${moodClass(before.mood)}` }, h('div', { class: 'small muted' }, `${sess.character.name} said:`), h('div', null, before.message)) : null,
     h('div', { class: 'compare' },
@@ -362,6 +476,7 @@ function renderNav() {
   const u = Api.user();
   const nav = document.querySelector('nav');
   nav.hidden = !Api.isLoggedIn();
+  if (Api.isLoggedIn()) Notifications.start(); else Notifications.stop();
   document.getElementById('userbox').replaceChildren(...(u ? [
     h('span', { class: 'muted small' }, u.displayName),
     h('button', { class: 'linklike', onclick: () => { Api.logout(); location.hash = '#/login'; } }, 'Log out'),

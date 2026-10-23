@@ -1,5 +1,6 @@
 package com.engish.evaluation;
 
+import com.engish.common.JobStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,9 +16,14 @@ public class Evaluation {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private UUID sessionId;
-    private int overallScore;
+    @Enumerated(EnumType.STRING)
+    private JobStatus status = JobStatus.PENDING;
+    private int attempts;
+    private String errorMessage;
+    private Integer overallScore;
     private String outcome;
     private String summary;
     private String resultJson;
     private Instant createdAt = Instant.now();
+    private Instant updatedAt = Instant.now();
 }
